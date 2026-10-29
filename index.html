@@ -409,7 +409,12 @@
                 }
             } catch (err) {
                 console.warn("Auth fallback to anonymous:", err);
-                await signInAnonymously(auth);
+                try {
+                    await signInAnonymously(auth);
+                } catch (fallbackErr) {
+                    console.error("Anonymous auth failed:", fallbackErr);
+                    updateSyncBadge('Offline', 'red');
+                }
             }
         }
 
@@ -433,14 +438,20 @@
                 snapshot.forEach((docSnap) => {
                     const data = docSnap.data();
                     if (data && data.user && (data.user === 'Jack' || data.user === 'Courtney')) {
+                        // Safe date resolution (handles string dates, timestamps, or date fields)
+                        let formattedWeek = data.week || data.date || '';
+                        if (formattedWeek && typeof formattedWeek.toDate === 'function') {
+                            formattedWeek = formattedWeek.toDate().toISOString().split('T')[0];
+                        }
+
                         updatedData[data.user].push({
                             id: docSnap.id,
-                            week: data.week,
-                            weight: Number(data.weight),
-                            sleep: Number(data.sleep),
-                            steps: Number(data.steps),
-                            calories: Number(data.calories),
-                            workouts: Number(data.workouts)
+                            week: formattedWeek,
+                            weight: Number(data.weight) || 0,
+                            sleep: Number(data.sleep) || 0,
+                            steps: Number(data.steps) || 0,
+                            calories: Number(data.calories) || 0,
+                            workouts: Number(data.workouts) || 0
                         });
                     }
                 });
@@ -450,7 +461,7 @@
                 window.updateDashboard();
             }, (error) => {
                 console.error("Firestore sync error:", error);
-                updateSyncBadge('Syncing Error', 'red');
+                updateSyncBadge('Sync Error', 'red');
             });
         }
 
@@ -459,6 +470,8 @@
             const badge = document.getElementById('syncBadge');
             const dot = document.getElementById('syncDot');
             const label = document.getElementById('syncText');
+
+            if (!badge || !dot || !label) return;
 
             label.textContent = text;
             if (color === 'emerald') {
@@ -475,7 +488,7 @@
 
         // Save entry to Firestore
         window.saveEntryToCloud = async function(entry, targetUser) {
-            if (!currentUser) return;
+            if (!currentUser) throw new Error("Not authenticated");
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'checkins', entry.id);
             await setDoc(docRef, {
                 ...entry,
@@ -486,7 +499,7 @@
 
         // Delete entry from Firestore
         window.deleteEntryFromCloud = async function(id) {
-            if (!currentUser) return;
+            if (!currentUser) throw new Error("Not authenticated");
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'checkins', id);
             await deleteDoc(docRef);
         };
