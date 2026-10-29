@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jack & Courtney - Weekly Health Tracker</title>
+    <title>Jack & Courtney - Fitness Tracker</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -34,27 +34,12 @@
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: rgba(0,0,0,0.05);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(156, 163, 175, 0.5);
-            border-radius: 4px;
-        }
-        .dark ::-webkit-scrollbar-track {
-            background: rgba(255,255,255,0.05);
-        }
-        .dark ::-webkit-scrollbar-thumb {
-            background: rgba(75, 85, 99, 0.5);
-        }
+        body { font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.5); border-radius: 4px; }
+        .dark ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        .dark ::-webkit-scrollbar-thumb { background: rgba(75, 85, 99, 0.5); }
     </style>
 </head>
 <body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen transition-colors duration-200">
@@ -67,12 +52,19 @@
                     <i data-lucide="activity" class="w-6 h-6"></i>
                 </div>
                 <div>
-                    <h1 class="text-lg font-bold leading-tight">Fitness Check-In</h1>
+                    <div class="flex items-center space-x-2">
+                        <h1 class="text-lg font-bold leading-tight">Fitness Check-In</h1>
+                        <!-- Cloud Sync Status Badge -->
+                        <span id="sync-badge" class="px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center space-x-1 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                            <span id="sync-status-text">Connecting...</span>
+                        </span>
+                    </div>
                     <p class="text-xs text-slate-500 dark:text-slate-400">Jack & Courtney's Dashboard</p>
                 </div>
             </div>
 
-            <!-- Profile Switcher & Options -->
+            <!-- Profile Switcher & Dark Mode Toggle -->
             <div class="flex items-center space-x-2 sm:space-x-4">
                 <!-- User Selector Toggle -->
                 <div class="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex items-center border border-slate-200 dark:border-slate-700 text-xs sm:text-sm">
@@ -102,6 +94,29 @@
     <!-- Main Container -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
+        <!-- Firestore Rules Guide Banner (Collapsible) -->
+        <div class="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-xs sm:text-sm text-amber-800 dark:text-amber-200">
+            <div class="flex items-center justify-between cursor-pointer" onclick="toggleHelpGuide()">
+                <div class="flex items-center space-x-2 font-semibold">
+                    <i data-lucide="cloud-lightning" class="w-4 h-4 text-amber-500"></i>
+                    <span>Cloud Sync Setup Guide & Rules Notice</span>
+                </div>
+                <i id="help-chevron" data-lucide="chevron-down" class="w-4 h-4 transition-transform"></i>
+            </div>
+            <div id="help-content" class="mt-3 pt-3 border-t border-amber-500/20 hidden space-y-2">
+                <p>To allow Jack and Courtney to view and save data from any browser or phone using this link, ensure your <strong>Firebase Firestore Security Rules</strong> in the Firebase Console allow read/write access to the collection <code>fitness_entries</code>:</p>
+                <pre class="bg-slate-900 text-amber-300 p-2.5 rounded-lg font-mono text-[11px] overflow-x-auto">
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /fitness_entries/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}</pre>
+            </div>
+        </div>
+
         <!-- Top Action Bar & Summary Stats -->
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -115,23 +130,23 @@
                     <span>Log New Week</span>
                 </button>
             </div>
-        </div>
-
-        <!-- Metric Summary Cards -->
-        <div id="summary-cards" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <!-- Cards injected dynamically -->
-        </div>
-
-        <!-- Metric Charts Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Weight Chart -->
-            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-                <div class="flex items-center justify-between mb-4">
-                    <div class="flex items-center space-x-2">
-                        <div class="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
-                            <i data-lucide="scale" class="w-5 h-5"></i>
+        <!-- Header / Navigation -->
+        <header class="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-xl text-white shadow-lg shadow-indigo-500/20">
+                        <i data-lucide="activity" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <h1 class="text-lg font-bold leading-tight">Fitness Check-In</h1>
+                            <!-- Cloud Sync Status Badge -->
+                            <span id="sync-badge" class="px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center space-x-1 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                <span id="sync-status-text">Connecting Cloud...</span>
+                            </span>
                         </div>
-                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">Weight Trend (lbs)</h3>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">Jack & Courtney's Dashboard</p>
                     </div>
                 </div>
                 <div class="h-64 relative">
@@ -205,7 +220,7 @@
             <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div>
                     <h3 class="font-semibold text-slate-800 dark:text-slate-100">Weekly Check-in Logs</h3>
-                    <p class="text-xs text-slate-500 dark:text-slate-400">View, edit, or delete logged weeks.</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">View, edit, or delete logged weeks across all connected devices.</p>
                 </div>
             </div>
             
@@ -232,10 +247,10 @@
             <!-- Empty State for Table -->
             <div id="table-empty-state" class="p-12 text-center hidden">
                 <div class="w-12 h-12 mx-auto mb-3 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-full flex items-center justify-center">
-                    <i data-lucide="database" class="w-6 h-6"></i>
+                    <i data-lucide="cloud-off" class="w-6 h-6"></i>
                 </div>
                 <h4 class="text-slate-700 dark:text-slate-300 font-medium">No Check-in Data Yet</h4>
-                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">Get started by clicking the "Log New Week" button above to add your first health entries!</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">Get started by clicking the "Log New Week" button above to record the first check-in for Jack or Courtney!</p>
             </div>
         </div>
 
@@ -296,40 +311,44 @@
 
                 <div class="pt-4 flex items-center justify-end space-x-3 border-t border-slate-200 dark:border-slate-800">
                     <button type="button" onclick="closeEntryModal()" class="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all">Cancel</button>
-                    <button type="submit" id="submit-btn" class="px-5 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md transition-all">Save Entry</button>
+                    <button type="submit" id="submit-btn" class="px-5 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md transition-all flex items-center space-x-2">
+                        <span>Save to Cloud</span>
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Firebase Script & App Logic -->
+    <!-- Firebase SDK Modules and Script Logic -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // Firebase Configuration & Global Setup
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'jack-courtney-fitness';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            // Fallback for standalone preview if needed
-            apiKey: "demo",
-            authDomain: "demo.firebaseapp.com",
-            projectId: "demo",
-            storageBucket: "demo.appspot.com",
-            messagingSenderId: "000000000",
-            appId: "1:000000000:web:000000000"
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAgyYUVDHIyz3tQn6ytfzx-bTlszpHEx4I",
+            authDomain: "jack-and-courtneys-fitness.firebaseapp.com",
+            projectId: "jack-and-courtneys-fitness",
+            storageBucket: "jack-and-courtneys-fitness.firebasestorage.app",
+            messagingSenderId: "174079115099",
+            appId: "1:174079115099:web:c67e7f5f1c9355a9dd247e",
+            measurementId: "G-3H2QV0TDPF"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        // Initialize Firebase
+        let app, auth, db;
+        let isCloudConnected = false;
+
+        // Local Storage Keys for Fallback
+        const LOCAL_STORAGE_KEY = 'jack_courtney_fitness_backup';
 
         // Application State
-        let currentUser = 'Jack'; // 'Jack', 'Courtney', 'Compare'
+        let currentUser = 'Jack'; 
         let entriesData = [];
         let chartInstances = {};
 
-        // Expose Functions to Window Scope for inline HTML listeners
+        // Window-bound handlers
         window.setActiveUser = setActiveUser;
         window.openEntryModal = openEntryModal;
         window.closeEntryModal = closeEntryModal;
@@ -337,8 +356,9 @@
         window.editEntry = editEntry;
         window.deleteEntry = deleteEntry;
         window.toggleDarkMode = toggleDarkMode;
+        window.toggleHelpGuide = toggleHelpGuide;
 
-        // Initialize App & Authentication
+        // Initialize App
         async function initApp() {
             lucide.createIcons();
 
@@ -350,351 +370,89 @@
             const monday = new Date(now.setDate(diff));
             dateInput.value = monday.toISOString().split('T')[0];
 
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (err) {
-                console.warn("Auth initialization fallback:", err);
-            }
-
-            // Realtime Sync Listener
-            const publicCollectionPath = collection(db, 'artifacts', appId, 'public', 'data', 'checkins');
-            
-            onSnapshot(publicCollectionPath, (snapshot) => {
-                entriesData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-
-                // Sort chronologically
-                entriesData.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-                renderDashboard();
-            }, (error) => {
-                console.error("Error fetching data from Firestore:", error);
-            });
-
             initCharts();
             updateUserUI();
-        }
 
-        // Switch Active Profile / View Mode
-        function setActiveUser(user) {
-            currentUser = user;
-            updateUserUI();
-            renderDashboard();
-        }
+            // Load local backup first
+            loadLocalBackup();
 
-        function updateUserUI() {
-            const btnJack = document.getElementById('btn-user-jack');
-            const btnCourtney = document.getElementById('btn-user-courtney');
-            const btnCompare = document.getElementById('btn-user-compare');
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
 
-            const activeClass = "bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white font-semibold";
-            const inactiveClass = "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white";
+                // Attempt anonymous auth
+                await signInAnonymously(auth);
 
-            btnJack.className = `px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center space-x-1.5 ${currentUser === 'Jack' ? activeClass : inactiveClass}`;
-            btnCourtney.className = `px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center space-x-1.5 ${currentUser === 'Courtney' ? activeClass : inactiveClass}`;
-            btnCompare.className = `px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center space-x-1.5 ${currentUser === 'Compare' ? activeClass : inactiveClass}`;
+                // Subscribe to real-time updates
+                const entriesRef = collection(db, 'fitness_entries');
+                onSnapshot(entriesRef, (snapshot) => {
+                    entriesData = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
 
-            const title = document.getElementById('view-title');
-            const subtitle = document.getElementById('view-subtitle');
+                    entriesData.sort((a, b) => new Date(a.date) - new Date(b.date));
+                    saveLocalBackup(entriesData);
 
-            if (currentUser === 'Jack') {
-                title.textContent = "Jack's Dashboard";
-                subtitle.textContent = "Weekly fitness entries and trends for Jack.";
-            } else if (currentUser === 'Courtney') {
-                title.textContent = "Courtney's Dashboard";
-                subtitle.textContent = "Weekly fitness entries and trends for Courtney.";
-            } else {
-                title.textContent = "Jack vs Courtney Comparison";
-                subtitle.textContent = "Side-by-side progression and metrics analysis.";
-            }
-
-            // Sync Modal profile pre-selection
-            if (currentUser !== 'Compare') {
-                document.getElementById('form-user').value = currentUser;
-            }
-        }
-
-        // Render Dashboard Metrics, Charts & Data Table
-        function renderDashboard() {
-            renderSummaryCards();
-            updateCharts();
-            renderLogsTable();
-        }
-
-        // Metric Card Summaries
-        function renderSummaryCards() {
-            const container = document.getElementById('summary-cards');
-            container.innerHTML = '';
-
-            const activeEntries = currentUser === 'Compare' 
-                ? entriesData 
-                : entriesData.filter(e => e.user === currentUser);
-
-            const metrics = [
-                { key: 'weight', label: 'Latest Weight', unit: 'lbs', icon: 'scale', color: 'blue' },
-                { key: 'sleep', label: 'Avg Sleep', unit: 'hrs', icon: 'moon', color: 'indigo' },
-                { key: 'steps', label: 'Avg Steps', unit: '', icon: 'footprints', color: 'emerald' },
-                { key: 'calories', label: 'Avg Calories', unit: 'kcal', icon: 'flame', color: 'amber' },
-                { key: 'workouts', label: 'Workouts', unit: '/wk', icon: 'dumbbell', color: 'rose' }
-            ];
-
-            metrics.forEach(m => {
-                let displayValue = '---';
-                let subtext = 'No data logged';
-
-                if (currentUser === 'Compare') {
-                    const jackData = entriesData.filter(e => e.user === 'Jack');
-                    const courtneyData = entriesData.filter(e => e.user === 'Courtney');
-
-                    const latestJack = jackData.length > 0 ? jackData[jackData.length - 1][m.key] : null;
-                    const latestCourtney = courtneyData.length > 0 ? courtneyData[courtneyData.length - 1][m.key] : null;
-
-                    if (latestJack !== null || latestCourtney !== null) {
-                        displayValue = `J: ${latestJack !== null ? latestJack : '-'} | C: ${latestCourtney !== null ? latestCourtney : '-'}`;
-                        subtext = 'Latest entries';
-                    }
-                } else {
-                    if (activeEntries.length > 0) {
-                        const latest = activeEntries[activeEntries.length - 1];
-                        displayValue = `${latest[m.key]} ${m.unit}`.trim();
-                        
-                        if (activeEntries.length > 1) {
-                            const prev = activeEntries[activeEntries.length - 2][m.key];
-                            const diff = (latest[m.key] - prev).toFixed(1);
-                            const sign = diff > 0 ? '+' : '';
-                            subtext = `${sign}${diff} vs prev week`;
-                        } else {
-                            subtext = 'First entry logged';
-                        }
-                    }
-                }
-
-                const cardHtml = `
-                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-                        <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
-                            <span class="text-xs font-semibold uppercase tracking-wider">${m.label}</span>
-                            <i data-lucide="${m.icon}" class="w-4 h-4 text-${m.color}-500"></i>
-                        </div>
-                        <div class="text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100 truncate">${displayValue}</div>
-                        <div class="text-xs text-slate-400 mt-1">${subtext}</div>
-                    </div>
-                `;
-                container.insertAdjacentHTML('beforeend', cardHtml);
-            });
-
-            lucide.createIcons();
-        }
-
-        // Initialize Chart.js Instances
-        function initCharts() {
-            const chartConfigs = [
-                { id: 'chart-weight', key: 'weight', label: 'Weight (lbs)' },
-                { id: 'chart-sleep', key: 'sleep', label: 'Sleep (hrs)' },
-                { id: 'chart-steps', key: 'steps', label: 'Steps / Day' },
-                { id: 'chart-calories', key: 'calories', label: 'Calories / Day' },
-                { id: 'chart-workouts', key: 'workouts', label: 'Workouts / Week' }
-            ];
-
-            chartConfigs.forEach(cfg => {
-                const ctx = document.getElementById(cfg.id).getContext('2d');
-                chartInstances[cfg.key] = new Chart(ctx, {
-                    type: 'line',
-                    data: { labels: [], datasets: [] },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: { intersect: false, mode: 'index' },
-                        plugins: {
-                            legend: { display: true, position: 'top', labels: { boxWidth: 12, usePointStyle: true } }
-                        },
-                        scales: {
-                            x: {
-                                grid: { display: false },
-                                ticks: { font: { size: 10 } }
-                            },
-                            y: {
-                                grid: { color: 'rgba(156, 163, 175, 0.1)' },
-                                ticks: { font: { size: 10 } }
-                            }
-                        }
-                    }
+                    isCloudConnected = true;
+                    setSyncStatus(true, "Cloud Live");
+                    renderDashboard();
+                }, (error) => {
+                    console.warn("Firestore error or restriction:", error);
+                    isCloudConnected = false;
+                    setSyncStatus(false, "Local Backup Mode (Check Rules)");
+                    renderDashboard();
                 });
-            });
-        }
 
-        // Update Charts Data based on selection
-        function updateCharts() {
-            const keys = ['weight', 'sleep', 'steps', 'calories', 'workouts'];
-
-            keys.forEach(key => {
-                const chart = chartInstances[key];
-                if (!chart) return;
-
-                if (currentUser === 'Compare') {
-                    // Get all unique dates sorted
-                    const dates = [...new Set(entriesData.map(e => e.date))].sort((a, b) => new Date(a) - new Date(b));
-                    
-                    const jackSeries = dates.map(d => {
-                        const match = entriesData.find(e => e.user === 'Jack' && e.date === d);
-                        return match ? match[key] : null;
-                    });
-
-                    const courtneySeries = dates.map(d => {
-                        const match = entriesData.find(e => e.user === 'Courtney' && e.date === d);
-                        return match ? match[key] : null;
-                    });
-
-                    chart.data.labels = dates;
-                    chart.data.datasets = [
-                        {
-                            label: 'Jack',
-                            data: jackSeries,
-                            borderColor: '#3b82f6',
-                            backgroundColor: '#3b82f620',
-                            tension: 0.3,
-                            spanGaps: true,
-                            pointRadius: 4
-                        },
-                        {
-                            label: 'Courtney',
-                            data: courtneySeries,
-                            borderColor: '#ec4899',
-                            backgroundColor: '#ec489920',
-                            tension: 0.3,
-                            spanGaps: true,
-                            pointRadius: 4
-                        }
-                    ];
-                } else {
-                    const userEntries = entriesData.filter(e => e.user === currentUser);
-                    const dates = userEntries.map(e => e.date);
-                    const values = userEntries.map(e => e[key]);
-                    const color = currentUser === 'Jack' ? '#3b82f6' : '#ec4899';
-
-                    chart.data.labels = dates;
-                    chart.data.datasets = [{
-                        label: `${currentUser}'s ${key.charAt(0).toUpperCase() + key.slice(1)}`,
-                        data: values,
-                        borderColor: color,
-                        backgroundColor: color + '20',
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 5,
-                        pointHoverRadius: 7
-                    }];
-                }
-
-                chart.update();
-            });
-        }
-
-        // Render Logs Table
-        function renderLogsTable() {
-            const tbody = document.getElementById('logs-table-body');
-            const emptyState = document.getElementById('table-empty-state');
-            tbody.innerHTML = '';
-
-            const filteredEntries = currentUser === 'Compare'
-                ? [...entriesData].reverse()
-                : entriesData.filter(e => e.user === currentUser).reverse();
-
-            if (filteredEntries.length === 0) {
-                emptyState.classList.remove('hidden');
-                return;
-            } else {
-                emptyState.classList.add('hidden');
+            } catch (err) {
+                console.warn("Firebase Auth / Init Error:", err);
+                isCloudConnected = false;
+                setSyncStatus(false, "Local Mode (Rules / Frame Restricted)");
+                renderDashboard();
             }
-
-            filteredEntries.forEach(entry => {
-                const userBadge = entry.user === 'Jack' 
-                    ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">Jack</span>'
-                    : '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300">Courtney</span>';
-
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors";
-                tr.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap">${userBadge}</td>
-                    <td class="px-6 py-4 whitespace-nowrap font-medium text-slate-800 dark:text-slate-200">${entry.date}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${entry.weight} lbs</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${entry.sleep} hrs</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${Number(entry.steps).toLocaleString()}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${Number(entry.calories).toLocaleString()} kcal</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${entry.workouts} sessions</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right space-x-2">
-                        <button onclick="editEntry('${entry.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-colors">
-                            <i data-lucide="edit-2" class="w-4 h-4"></i>
-                        </button>
-                        <button onclick="deleteEntry('${entry.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition-colors">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-
-            lucide.createIcons();
         }
 
-        // Modal Controls & Form Actions
-        function openEntryModal(entryId = null) {
-            const modal = document.getElementById('entry-modal');
-            const container = document.getElementById('modal-container');
-            const modalTitle = document.getElementById('modal-title');
-            
-            if (entryId) {
-                const entry = entriesData.find(e => e.id === entryId);
-                if (entry) {
-                    modalTitle.textContent = 'Edit Weekly Entry';
-                    document.getElementById('entry-id').value = entry.id;
-                    document.getElementById('form-user').value = entry.user;
-                    document.getElementById('form-date').value = entry.date;
-                    document.getElementById('form-weight').value = entry.weight;
-                    document.getElementById('form-sleep').value = entry.sleep;
-                    document.getElementById('form-steps').value = entry.steps;
-                    document.getElementById('form-calories').value = entry.calories;
-                    document.getElementById('form-workouts').value = entry.workouts;
+        // Local Storage Backup Helpers
+        function loadLocalBackup() {
+            try {
+                const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (raw) {
+                    entriesData = JSON.parse(raw);
+                    entriesData.sort((a, b) => new Date(a.date) - new Date(b.date));
                 }
-            } else {
-                modalTitle.textContent = 'Log New Week Entry';
-                document.getElementById('entry-id').value = '';
-                if (currentUser !== 'Compare') {
-                    document.getElementById('form-user').value = currentUser;
-                }
+            } catch (e) {
+                console.error("Local storage error:", e);
             }
-
-            modal.classList.remove('hidden');
-            setTimeout(() => {
-                modal.classList.remove('opacity-0');
-                container.classList.remove('scale-95');
-                container.classList.add('scale-100');
-            }, 10);
         }
 
-        function closeEntryModal() {
-            const modal = document.getElementById('entry-modal');
-            const container = document.getElementById('modal-container');
+        function saveLocalBackup(data) {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+            } catch (e) {
+                console.error("Local storage save error:", e);
+            }
+        }
 
-            container.classList.remove('scale-100');
-            container.classList.add('scale-95');
-            modal.classList.add('opacity-0');
+        function setSyncStatus(connected, text) {
+            const badge = document.getElementById('sync-badge');
+            const statusText = document.getElementById('sync-status-text');
+            statusText.textContent = text;
 
-            setTimeout(() => {
-                modal.classList.add('hidden');
-                document.getElementById('entry-form').reset();
-            }, 200);
+            if (connected) {
+                badge.className = "px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center space-x-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300";
+                badge.querySelector('span').className = "w-1.5 h-1.5 rounded-full bg-emerald-500";
+            } else {
+                badge.className = "px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center space-x-1 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
+                badge.querySelector('span').className = "w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse";
+            }
         }
 
         async function handleSaveEntry(e) {
             e.preventDefault();
             const submitBtn = document.getElementById('submit-btn');
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Saving...';
+            submitBtn.innerHTML = `<span>Saving...</span>`;
 
             const entryId = document.getElementById('entry-id').value;
             const payload = {
@@ -708,67 +466,71 @@
                 updatedAt: new Date().toISOString()
             };
 
-            try {
-                if (entryId) {
-                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'checkins', entryId);
-                    await setDoc(docRef, payload, { merge: true });
-                } else {
-                    const publicCollectionPath = collection(db, 'artifacts', appId, 'public', 'data', 'checkins');
-                    await addDoc(publicCollectionPath, payload);
+            if (isCloudConnected && db) {
+                try {
+                    if (entryId) {
+                        const docRef = doc(db, 'fitness_entries', entryId);
+                        await setDoc(docRef, payload, { merge: true });
+                    } else {
+                        await addDoc(collection(db, 'fitness_entries'), payload);
+                    }
+                } catch (err) {
+                    console.error("Cloud write failed, falling back to local:", err);
+                    saveLocally(entryId, payload);
                 }
-                closeEntryModal();
-            } catch (err) {
-                console.error("Error saving document:", err);
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Save Entry';
+            } else {
+                saveLocally(entryId, payload);
             }
+
+            closeEntryModal();
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `<span>Save Entry</span>`;
         }
 
-        function editEntry(id) {
-            openEntryModal(id);
+        function saveLocally(entryId, payload) {
+            if (entryId) {
+                const idx = entriesData.findIndex(e => e.id === entryId);
+                if (idx !== -1) entriesData[idx] = { id: entryId, ...payload };
+            } else {
+                entriesData.push({ id: 'local_' + Date.now(), ...payload });
+            }
+            entriesData.sort((a, b) => new Date(a.date) - new Date(b.date));
+            saveLocalBackup(entriesData);
+            renderDashboard();
         }
 
         async function deleteEntry(id) {
-            if (confirm("Are you sure you want to delete this weekly entry?")) {
-                try {
-                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'checkins', id);
-                    await deleteDoc(docRef);
-                } catch (err) {
-                    console.error("Error deleting document:", err);
+            if (confirm("Are you sure you want to delete this weekly check-in?")) {
+                if (isCloudConnected && db && !id.startsWith('local_')) {
+                    try {
+                        await deleteDoc(doc(db, 'fitness_entries', id));
+                    } catch (err) {
+                        console.error("Cloud delete failed, removing locally:", err);
+                        entriesData = entriesData.filter(e => e.id !== id);
+                        saveLocalBackup(entriesData);
+                        renderDashboard();
+                    }
+                } else {
+                    entriesData = entriesData.filter(e => e.id !== id);
+                    saveLocalBackup(entriesData);
+                    renderDashboard();
                 }
             }
         }
 
-        // Dark Mode Toggle
-        function toggleDarkMode() {
-            const html = document.documentElement;
-            html.classList.toggle('dark');
+        function toggleHelpGuide() {
+            const content = document.getElementById('help-content');
+            const chevron = document.getElementById('help-chevron');
+            content.classList.toggle('hidden');
+            chevron.classList.toggle('rotate-180');
         }
 
-        // Initialize on Load
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+        }
+
+        // Initialize on DOM load
         window.addEventListener('DOMContentLoaded', initApp);
     </script>
 </body>
 </html>
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyAgyYUVDHIyz3tQn6ytfzx-bTlszpHEx4I",
-  authDomain: "jack-and-courtneys-fitness.firebaseapp.com",
-  projectId: "jack-and-courtneys-fitness",
-  storageBucket: "jack-and-courtneys-fitness.firebasestorage.app",
-  messagingSenderId: "174079115099",
-  appId: "1:174079115099:web:c67e7f5f1c9355a9dd247e",
-  measurementId: "G-3H2QV0TDPF"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
