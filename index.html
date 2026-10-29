@@ -751,3 +751,24 @@
     </script>
 </body>
 </html>
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyAgyYUVDHIyz3tQn6ytfzx-bTlszpHEx4I",
+  authDomain: "jack-and-courtneys-fitness.firebaseapp.com",
+  projectId: "jack-and-courtneys-fitness",
+  storageBucket: "jack-and-courtneys-fitness.firebasestorage.app",
+  messagingSenderId: "174079115099",
+  appId: "1:174079115099:web:c67e7f5f1c9355a9dd247e",
+  measurementId: "G-3H2QV0TDPF"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
