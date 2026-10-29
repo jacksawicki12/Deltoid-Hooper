@@ -60,16 +60,21 @@
     <!-- Header Navigation -->
     <header class="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-4 lg:px-8 py-3 transition-colors duration-300">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-            <!-- App Logo / Title -->
+            <!-- App Logo / Title & Sync Status -->
             <div class="flex items-center gap-3">
                 <div class="p-2.5 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white shadow-lg shadow-indigo-500/20">
                     <i class="fa-solid fa-heart-pulse text-xl"></i>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                        FitTracker <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 font-medium border border-indigo-500/20">Weekly Progress</span>
-                    </h1>
-                    <p class="text-xs text-slate-400">Jack & Courtney's Health Journey</p>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-xl font-bold tracking-tight text-white">FitTracker</h1>
+                        <!-- Live Sync Indicator Badge -->
+                        <span id="syncBadge" class="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 flex items-center gap-1.5">
+                            <span id="syncDot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                            <span id="syncText">Connecting...</span>
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-400">Jack & Courtney's Shared Health Tracker</p>
                 </div>
             </div>
 
@@ -116,7 +121,7 @@
                             <h2 id="userNameDisplay" class="text-2xl font-bold text-white">Jack's Overview</h2>
                             <span id="activeUserBadge" class="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-semibold border border-blue-500/30">Active Profile</span>
                         </div>
-                        <p id="userSubtext" class="text-sm text-slate-400 mt-0.5">Tracking health metrics & progress over time</p>
+                        <p id="userSubtext" class="text-sm text-slate-400 mt-0.5">Live syncing health metrics across devices</p>
                     </div>
                 </div>
 
@@ -237,9 +242,6 @@
                     <p class="text-xs text-slate-400 mt-0.5">Manage, review, or edit past check-in entries</p>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button onclick="resetToDefaultData()" class="text-xs text-slate-400 hover:text-slate-200 underline transition">
-                        Reset Sample Data
-                    </button>
                     <button onclick="openCheckInModal()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
                         <i class="fa-solid fa-plus text-indigo-400"></i> Add Entry
                     </button>
@@ -355,8 +357,8 @@
                     <button type="button" onclick="closeCheckInModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm font-medium text-slate-300 transition">
                         Cancel
                     </button>
-                    <button type="submit" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/30 transition">
-                        Save Entry
+                    <button type="submit" id="saveEntryBtn" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/30 transition flex items-center gap-2">
+                        <span>Save Entry</span>
                     </button>
                 </div>
             </form>
@@ -369,79 +371,136 @@
         <span id="toastMessage" class="text-sm font-medium">Data updated successfully!</span>
     </div>
 
-    <!-- Application Script Logic -->
-    <script>
-        // Sample Data removed - starts completely empty for manual entry
-        const sampleData = {
-            Jack: [],
-            Courtney: []
+    <!-- Firebase Script Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase state & configuration
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'fit-tracker-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "demo",
+            authDomain: "demo.firebaseapp.com",
+            projectId: "demo-project"
         };
 
-        // State variables
-        let activeUser = 'Jack';
-        let currentUnit = 'lbs'; // 'lbs' or 'kg'
-        let trackerData = {};
-        let chartInstances = {};
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
-        // Initialization
-        window.onload = function() {
-            loadStoredData();
-            initCharts();
-            switchUser('Jack');
-        };
+        // Application State
+        window.activeUser = 'Jack';
+        window.currentUnit = 'lbs';
+        window.trackerData = { Jack: [], Courtney: [] };
+        window.chartInstances = {};
 
-        // Load data from LocalStorage or seed defaults
-        function loadStoredData() {
-            const stored = localStorage.getItem('fitTrackerData');
-            if (stored) {
-                try {
-                    trackerData = JSON.parse(stored);
-                } catch (e) {
-                    console.error('Error parsing stored data', e);
-                    trackerData = JSON.parse(JSON.stringify(sampleData));
+        let unsubscribeFirestore = null;
+        let currentUser = null;
+
+        // Initialize Firebase Authentication & Live Listener
+        async function initAuthAndSync() {
+            updateSyncBadge('Connecting...', 'amber');
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
                 }
+            } catch (err) {
+                console.warn("Auth fallback to anonymous:", err);
+                await signInAnonymously(auth);
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                setupFirestoreRealtimeListener();
             } else {
-                trackerData = JSON.parse(JSON.stringify(sampleData));
-                saveDataToStorage();
+                updateSyncBadge('Offline', 'red');
+            }
+        });
+
+        // Set up real-time listener on shared public collection
+        function setupFirestoreRealtimeListener() {
+            if (unsubscribeFirestore) unsubscribeFirestore();
+
+            const publicLogsRef = collection(db, 'artifacts', appId, 'public', 'data', 'checkins');
+
+            unsubscribeFirestore = onSnapshot(publicLogsRef, (snapshot) => {
+                const updatedData = { Jack: [], Courtney: [] };
+                snapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    if (data && data.user && (data.user === 'Jack' || data.user === 'Courtney')) {
+                        updatedData[data.user].push({
+                            id: docSnap.id,
+                            week: data.week,
+                            weight: Number(data.weight),
+                            sleep: Number(data.sleep),
+                            steps: Number(data.steps),
+                            calories: Number(data.calories),
+                            workouts: Number(data.workouts)
+                        });
+                    }
+                });
+
+                window.trackerData = updatedData;
+                updateSyncBadge('Live Synced', 'emerald');
+                window.updateDashboard();
+            }, (error) => {
+                console.error("Firestore sync error:", error);
+                updateSyncBadge('Syncing Error', 'red');
+            });
+        }
+
+        // Helper: Update Header Sync Badge
+        function updateSyncBadge(text, color) {
+            const badge = document.getElementById('syncBadge');
+            const dot = document.getElementById('syncDot');
+            const label = document.getElementById('syncText');
+
+            label.textContent = text;
+            if (color === 'emerald') {
+                badge.className = "text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-medium border border-emerald-500/20 flex items-center gap-1.5";
+                dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+            } else if (color === 'red') {
+                badge.className = "text-xs px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 font-medium border border-rose-500/20 flex items-center gap-1.5";
+                dot.className = "w-2 h-2 rounded-full bg-rose-400";
+            } else {
+                badge.className = "text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 flex items-center gap-1.5";
+                dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
             }
         }
 
-        // Save state to LocalStorage
-        function saveDataToStorage() {
-            localStorage.setItem('fitTrackerData', JSON.stringify(trackerData));
-        }
+        // Save entry to Firestore
+        window.saveEntryToCloud = async function(entry, targetUser) {
+            if (!currentUser) return;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'checkins', entry.id);
+            await setDoc(docRef, {
+                ...entry,
+                user: targetUser,
+                updatedAt: new Date().toISOString()
+            });
+        };
 
-        // Clear active profile data
-        function resetToDefaultData() {
-            if (confirm(`Clear all logs for ${activeUser}? This cannot be undone.`)) {
-                trackerData[activeUser] = [];
-                saveDataToStorage();
-                updateDashboard();
-                showToast(`Cleared all logs for ${activeUser}`);
-            }
-        }
+        // Delete entry from Firestore
+        window.deleteEntryFromCloud = async function(id) {
+            if (!currentUser) return;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'checkins', id);
+            await deleteDoc(docRef);
+        };
 
-        // Save state to LocalStorage
-        function saveDataToStorage() {
-            localStorage.setItem('fitTrackerData', JSON.stringify(trackerData));
-        }
+        // Kick off Firebase sync
+        initAuthAndSync();
+    </script>
 
-        // Reset data to default sample
-        function resetToDefaultData() {
-            if (confirm("Reset all logs for Jack & Courtney to original sample data?")) {
-                trackerData = JSON.parse(JSON.stringify(sampleData));
-                saveDataToStorage();
-                updateDashboard();
-                showToast("Sample data restored successfully!");
-            }
-        }
-
+    <script>
         // Switch Active User Profile
         function switchUser(user) {
-            activeUser = user;
+            window.activeUser = user;
 
             const isJack = user === 'Jack';
-            const primaryColor = isJack ? '#3B82F6' : '#EC4899';
             const activeBgClass = isJack ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-pink-600 text-white shadow-lg shadow-pink-500/30';
             const inactiveClass = 'text-slate-400 hover:text-slate-200';
 
@@ -458,7 +517,7 @@
             }
 
             // Update Header Banner
-            document.getElementById('userNameDisplay').textContent = `${user}'s Dashboard`;
+            document.getElementById('userNameDisplay').textContent = `${user}'s Overview`;
             document.getElementById('userAvatar').textContent = user.charAt(0);
             document.getElementById('userAvatar').className = `w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-bold shadow-lg transition-colors ${
                 isJack ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white' : 'bg-gradient-to-br from-pink-500 to-rose-600 text-white'
@@ -475,26 +534,23 @@
 
         // Toggle Weight Unit (lbs <-> kg)
         function toggleUnit() {
-            currentUnit = currentUnit === 'lbs' ? 'kg' : 'lbs';
-            document.getElementById('unitLabel').textContent = currentUnit;
-            document.getElementById('weightUnitTag').textContent = currentUnit;
+            window.currentUnit = window.currentUnit === 'lbs' ? 'kg' : 'lbs';
+            document.getElementById('unitLabel').textContent = window.currentUnit;
+            document.getElementById('weightUnitTag').textContent = window.currentUnit;
             
-            // Update table header labels
-            document.querySelectorAll('.unitText').forEach(el => el.textContent = currentUnit);
+            document.querySelectorAll('.unitText').forEach(el => el.textContent = window.currentUnit);
 
             updateDashboard();
-            showToast(`Switched weight unit to ${currentUnit}`);
+            showToast(`Switched weight unit to ${window.currentUnit}`);
         }
 
-        // Helper: Convert weight according to active unit
         function formatWeight(lbsValue) {
-            if (currentUnit === 'kg') {
+            if (window.currentUnit === 'kg') {
                 return (lbsValue * 0.45359237).toFixed(1);
             }
             return Number(lbsValue).toFixed(1);
         }
 
-        // Helper: Format date strings cleanly
         function formatDateLabel(dateStr) {
             if (!dateStr) return '';
             const d = new Date(dateStr + 'T00:00:00');
@@ -503,12 +559,11 @@
 
         // Update Dashboard Data, Summary Cards, Charts & History Table
         function updateDashboard() {
-            const userLogs = (trackerData[activeUser] || []).slice().sort((a, b) => new Date(a.week) - new Date(b.week));
+            const userLogs = (window.trackerData[window.activeUser] || []).slice().sort((a, b) => new Date(a.week) - new Date(b.week));
 
-            // Summary Metrics calculation
             if (userLogs.length > 0) {
                 const latest = userLogs[userLogs.length - 1];
-                document.getElementById('statLatestWeight').textContent = `${formatWeight(latest.weight)} ${currentUnit}`;
+                document.getElementById('statLatestWeight').textContent = `${formatWeight(latest.weight)} ${window.currentUnit}`;
                 document.getElementById('statAvgSleep').textContent = `${latest.sleep} hrs`;
                 document.getElementById('statAvgSteps').textContent = Number(latest.steps).toLocaleString();
                 document.getElementById('statAvgWorkouts').textContent = `${latest.workouts} days`;
@@ -519,14 +574,10 @@
                 document.getElementById('statAvgWorkouts').textContent = '--';
             }
 
-            // Update Charts
             updateCharts(userLogs);
-
-            // Render History Table (sorted newest first)
             renderHistoryTable(userLogs.slice().reverse());
         }
 
-        // Chart Config & Initialization
         function initCharts() {
             const commonOptions = {
                 responsive: true,
@@ -555,8 +606,7 @@
                 }
             };
 
-            // 1. Weight Chart
-            chartInstances.weight = new Chart(document.getElementById('chartWeight'), {
+            window.chartInstances.weight = new Chart(document.getElementById('chartWeight'), {
                 type: 'line',
                 data: { labels: [], datasets: [] },
                 options: {
@@ -567,15 +617,14 @@
                         tooltip: {
                             ...commonOptions.plugins.tooltip,
                             callbacks: {
-                                label: (ctx) => ` Weight: ${ctx.parsed.y} ${currentUnit}`
+                                label: (ctx) => ` Weight: ${ctx.parsed.y} ${window.currentUnit}`
                             }
                         }
                     }
                 }
             });
 
-            // 2. Sleep Chart
-            chartInstances.sleep = new Chart(document.getElementById('chartSleep'), {
+            window.chartInstances.sleep = new Chart(document.getElementById('chartSleep'), {
                 type: 'line',
                 data: { labels: [], datasets: [] },
                 options: {
@@ -593,8 +642,7 @@
                 }
             });
 
-            // 3. Steps Chart
-            chartInstances.steps = new Chart(document.getElementById('chartSteps'), {
+            window.chartInstances.steps = new Chart(document.getElementById('chartSteps'), {
                 type: 'bar',
                 data: { labels: [], datasets: [] },
                 options: {
@@ -611,8 +659,7 @@
                 }
             });
 
-            // 4. Calories Chart
-            chartInstances.calories = new Chart(document.getElementById('chartCalories'), {
+            window.chartInstances.calories = new Chart(document.getElementById('chartCalories'), {
                 type: 'line',
                 data: { labels: [], datasets: [] },
                 options: {
@@ -630,8 +677,7 @@
                 }
             });
 
-            // 5. Workouts Chart
-            chartInstances.workouts = new Chart(document.getElementById('chartWorkouts'), {
+            window.chartInstances.workouts = new Chart(document.getElementById('chartWorkouts'), {
                 type: 'bar',
                 data: { labels: [], datasets: [] },
                 options: {
@@ -658,15 +704,15 @@
             });
         }
 
-        // Update Charts Data dynamically
         function updateCharts(logs) {
-            const labels = logs.map(l => formatDateLabel(l.week));
-            const primaryHex = activeUser === 'Jack' ? '#3B82F6' : '#EC4899';
-            const primaryAlpha = activeUser === 'Jack' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(236, 72, 153, 0.15)';
+            if (!window.chartInstances.weight) return;
 
-            // 1. Weight Chart Data
-            chartInstances.weight.data.labels = labels;
-            chartInstances.weight.data.datasets = [{
+            const labels = logs.map(l => formatDateLabel(l.week));
+            const primaryHex = window.activeUser === 'Jack' ? '#3B82F6' : '#EC4899';
+            const primaryAlpha = window.activeUser === 'Jack' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(236, 72, 153, 0.15)';
+
+            window.chartInstances.weight.data.labels = labels;
+            window.chartInstances.weight.data.datasets = [{
                 data: logs.map(l => parseFloat(formatWeight(l.weight))),
                 borderColor: primaryHex,
                 backgroundColor: primaryAlpha,
@@ -675,11 +721,10 @@
                 pointBackgroundColor: primaryHex,
                 pointRadius: 4
             }];
-            chartInstances.weight.update();
+            window.chartInstances.weight.update();
 
-            // 2. Sleep Chart Data (With 8h Goal Target Line)
-            chartInstances.sleep.data.labels = labels;
-            chartInstances.sleep.data.datasets = [
+            window.chartInstances.sleep.data.labels = labels;
+            window.chartInstances.sleep.data.datasets = [
                 {
                     data: logs.map(l => l.sleep),
                     borderColor: '#10B981',
@@ -699,11 +744,10 @@
                     fill: false
                 }
             ];
-            chartInstances.sleep.update();
+            window.chartInstances.sleep.update();
 
-            // 3. Steps Chart Data (With 10,000 Step Goal Reference Line)
-            chartInstances.steps.data.labels = labels;
-            chartInstances.steps.data.datasets = [
+            window.chartInstances.steps.data.labels = labels;
+            window.chartInstances.steps.data.datasets = [
                 {
                     type: 'bar',
                     data: logs.map(l => l.steps),
@@ -721,11 +765,10 @@
                     fill: false
                 }
             ];
-            chartInstances.steps.update();
+            window.chartInstances.steps.update();
 
-            // 4. Calorie Intake Chart
-            chartInstances.calories.data.labels = labels;
-            chartInstances.calories.data.datasets = [{
+            window.chartInstances.calories.data.labels = labels;
+            window.chartInstances.calories.data.datasets = [{
                 data: logs.map(l => l.calories),
                 borderColor: '#F43F5E',
                 backgroundColor: 'rgba(244, 63, 94, 0.1)',
@@ -734,20 +777,18 @@
                 pointBackgroundColor: '#F43F5E',
                 pointRadius: 4
             }];
-            chartInstances.calories.update();
+            window.chartInstances.calories.update();
 
-            // 5. Workouts Chart
-            chartInstances.workouts.data.labels = labels;
-            chartInstances.workouts.data.datasets = [{
+            window.chartInstances.workouts.data.labels = labels;
+            window.chartInstances.workouts.data.datasets = [{
                 data: logs.map(l => l.workouts),
                 backgroundColor: 'rgba(168, 85, 247, 0.75)',
                 hoverBackgroundColor: 'rgba(168, 85, 247, 0.95)',
                 borderRadius: 6
             }];
-            chartInstances.workouts.update();
+            window.chartInstances.workouts.update();
         }
 
-        // Render History Table
         function renderHistoryTable(logs) {
             const tbody = document.getElementById('historyTableBody');
             tbody.innerHTML = '';
@@ -757,9 +798,9 @@
                     <tr>
                         <td colspan="7" class="py-12 text-center text-slate-400">
                             <div class="flex flex-col items-center justify-center gap-2">
-                                <i class="fa-solid fa-clipboard-list text-3xl text-slate-600 mb-1"></i>
-                                <p class="text-base font-semibold text-slate-300">No check-in entries yet for ${activeUser}</p>
-                                <p class="text-xs text-slate-500">Click "Log Week" above to add your first weekly entry!</p>
+                                <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-600 mb-1"></i>
+                                <p class="text-base font-semibold text-slate-300">No check-in entries found for ${window.activeUser}</p>
+                                <p class="text-xs text-slate-500">Log a week to sync live data across both your devices!</p>
                             </div>
                         </td>
                     </tr>
@@ -810,13 +851,11 @@
             });
         }
 
-        // Modal Control: Open Check-In Modal (New Entry)
         function openCheckInModal() {
             document.getElementById('editEntryId').value = '';
-            document.getElementById('modalTitle').textContent = `Log Check-In for ${activeUser}`;
-            document.getElementById('formUser').value = activeUser;
+            document.getElementById('modalTitle').textContent = `Log Check-In for ${window.activeUser}`;
+            document.getElementById('formUser').value = window.activeUser;
 
-            // Default week date to today's date in YYYY-MM-DD
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('formWeek').value = today;
             document.getElementById('formWeight').value = '';
@@ -828,20 +867,18 @@
             showModal();
         }
 
-        // Modal Control: Edit existing entry
         function editEntry(id) {
-            const userLogs = trackerData[activeUser] || [];
+            const userLogs = window.trackerData[window.activeUser] || [];
             const entry = userLogs.find(item => item.id === id);
 
             if (!entry) return;
 
             document.getElementById('editEntryId').value = entry.id;
             document.getElementById('modalTitle').textContent = `Edit Check-In (${entry.week})`;
-            document.getElementById('formUser').value = activeUser;
+            document.getElementById('formUser').value = window.activeUser;
             document.getElementById('formWeek').value = entry.week;
             
-            // Format weight in active display unit
-            document.getElementById('formWeight').value = currentUnit === 'kg' ? (entry.weight * 0.45359237).toFixed(1) : entry.weight;
+            document.getElementById('formWeight').value = window.currentUnit === 'kg' ? (entry.weight * 0.45359237).toFixed(1) : entry.weight;
             document.getElementById('formSleep').value = entry.sleep;
             document.getElementById('formSteps').value = entry.steps;
             document.getElementById('formCalories').value = entry.calories;
@@ -870,18 +907,19 @@
             }, 200);
         }
 
-        // Delete Entry Logic
-        function deleteEntry(id) {
-            if (confirm("Are you sure you want to delete this weekly entry?")) {
-                trackerData[activeUser] = (trackerData[activeUser] || []).filter(entry => entry.id !== id);
-                saveDataToStorage();
-                updateDashboard();
-                showToast("Entry deleted successfully");
+        async function deleteEntry(id) {
+            if (confirm("Delete this weekly entry from the cloud?")) {
+                try {
+                    await window.deleteEntryFromCloud(id);
+                    showToast("Entry removed across devices");
+                } catch (e) {
+                    console.error("Delete failed:", e);
+                    showToast("Failed to delete entry");
+                }
             }
         }
 
-        // Handle Check-In Form Submit
-        function handleFormSubmit(e) {
+        async function handleFormSubmit(e) {
             e.preventDefault();
 
             const targetUser = document.getElementById('formUser').value;
@@ -889,11 +927,10 @@
             const week = document.getElementById('formWeek').value;
             let weightInput = parseFloat(document.getElementById('formWeight').value);
 
-            // Convert to internal standard (lbs) if user entered in kg
-            const weightLbs = currentUnit === 'kg' ? parseFloat((weightInput / 0.45359237).toFixed(1)) : weightInput;
+            const weightLbs = window.currentUnit === 'kg' ? parseFloat((weightInput / 0.45359237).toFixed(1)) : weightInput;
 
-            const newEntry = {
-                id: editId || 'log_' + Date.now(),
+            const entryData = {
+                id: editId || 'log_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
                 week: week,
                 weight: weightLbs,
                 sleep: parseFloat(document.getElementById('formSleep').value),
@@ -902,40 +939,27 @@
                 workouts: parseInt(document.getElementById('formWorkouts').value, 10)
             };
 
-            if (!trackerData[targetUser]) {
-                trackerData[targetUser] = [];
-            }
+            const submitBtn = document.getElementById('saveEntryBtn');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Syncing...`;
 
-            if (editId) {
-                // Update existing
-                const idx = trackerData[targetUser].findIndex(item => item.id === editId);
-                if (idx !== -1) {
-                    trackerData[targetUser][idx] = newEntry;
+            try {
+                await window.saveEntryToCloud(entryData, targetUser);
+                closeCheckInModal();
+                showToast(editId ? "Updated live across devices!" : "Saved & synced to cloud!");
+                
+                if (targetUser !== window.activeUser) {
+                    switchUser(targetUser);
                 }
-            } else {
-                // Check if entry for week already exists, update or push
-                const existingIdx = trackerData[targetUser].findIndex(item => item.week === week);
-                if (existingIdx !== -1) {
-                    trackerData[targetUser][existingIdx] = { ...newEntry, id: trackerData[targetUser][existingIdx].id };
-                } else {
-                    trackerData[targetUser].push(newEntry);
-                }
+            } catch (err) {
+                console.error("Error saving to cloud:", err);
+                showToast("Error saving data");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = `<span>Save Entry</span>`;
             }
-
-            saveDataToStorage();
-
-            // Switch to form user if saved for different person
-            if (targetUser !== activeUser) {
-                switchUser(targetUser);
-            } else {
-                updateDashboard();
-            }
-
-            closeCheckInModal();
-            showToast(editId ? "Entry updated!" : "New weekly entry saved!");
         }
 
-        // Helper Toast Notification
         function showToast(message) {
             const toast = document.getElementById('toast');
             document.getElementById('toastMessage').textContent = message;
@@ -947,6 +971,11 @@
                 toast.classList.add('translate-y-20', 'opacity-0');
             }, 3000);
         }
+
+        window.onload = function() {
+            initCharts();
+            switchUser('Jack');
+        };
     </script>
 </body>
 </html>
