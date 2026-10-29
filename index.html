@@ -367,15 +367,15 @@
 
     <!-- Notification Toast -->
     <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 border border-indigo-500/50 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3">
-        <i class="fa-solid fa-circle-check text-indigo-400 text-lg"></i>
+        <i class="fa-solid fa-circle-check text-indigo-400 text-lg" id="toastIcon"></i>
         <span id="toastMessage" class="text-sm font-medium">Data updated successfully!</span>
     </div>
 
     <!-- Firebase Script Logic -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // Global Firebase state & configuration
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'fit-tracker-app';
@@ -392,7 +392,28 @@
         // Application State
         window.activeUser = 'Jack';
         window.currentUnit = 'lbs';
-        window.trackerData = { Jack: [], Courtney: [] };
+        window.isCloudOnline = false;
+        
+        // Load initial local data
+        const LOCAL_STORAGE_KEY = 'fit_tracker_local_db_v2';
+        function getLocalData() {
+            try {
+                const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+                return stored ? JSON.parse(stored) : { Jack: [], Courtney: [] };
+            } catch (e) {
+                return { Jack: [], Courtney: [] };
+            }
+        }
+
+        function saveLocalData(data) {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+            } catch (e) {
+                console.error("Failed to store locally", e);
+            }
+        }
+
+        window.trackerData = getLocalData();
         window.chartInstances = {};
 
         let unsubscribeFirestore = null;
@@ -408,12 +429,14 @@
                     await signInAnonymously(auth);
                 }
             } catch (err) {
-                console.warn("Auth fallback to anonymous:", err);
+                console.warn("Auth fallback handling:", err);
                 try {
                     await signInAnonymously(auth);
                 } catch (fallbackErr) {
-                    console.error("Anonymous auth failed:", fallbackErr);
-                    updateSyncBadge('Offline', 'red');
+                    console.warn("Offline mode activated:", fallbackErr);
+                    window.isCloudOnline = false;
+                    updateSyncBadge('Saved Locally (Offline)', 'amber');
+                    window.updateDashboard();
                 }
             }
         }
@@ -423,7 +446,8 @@
                 currentUser = user;
                 setupFirestoreRealtimeListener();
             } else {
-                updateSyncBadge('Offline', 'red');
+                window.isCloudOnline = false;
+                updateSyncBadge('Saved Locally (Offline)', 'amber');
             }
         });
 
@@ -434,17 +458,16 @@
             const publicLogsRef = collection(db, 'artifacts', appId, 'public', 'data', 'checkins');
 
             unsubscribeFirestore = onSnapshot(publicLogsRef, (snapshot) => {
-                const updatedData = { Jack: [], Courtney: [] };
+                const cloudData = { Jack: [], Courtney: [] };
                 snapshot.forEach((docSnap) => {
                     const data = docSnap.data();
                     if (data && data.user && (data.user === 'Jack' || data.user === 'Courtney')) {
-                        // Safe date resolution (handles string dates, timestamps, or date fields)
                         let formattedWeek = data.week || data.date || '';
                         if (formattedWeek && typeof formattedWeek.toDate === 'function') {
                             formattedWeek = formattedWeek.toDate().toISOString().split('T')[0];
                         }
 
-                        updatedData[data.user].push({
+                        cloudData[data.user].push({
                             id: docSnap.id,
                             week: formattedWeek,
                             weight: Number(data.weight) || 0,
@@ -456,12 +479,17 @@
                     }
                 });
 
-                window.trackerData = updatedData;
+                // Merge with local fallback data
+                window.trackerData = cloudData;
+                saveLocalData(cloudData);
+                window.isCloudOnline = true;
                 updateSyncBadge('Live Synced', 'emerald');
                 window.updateDashboard();
             }, (error) => {
-                console.error("Firestore sync error:", error);
-                updateSyncBadge('Sync Error', 'red');
+                console.warn("Firestore listener offline/error, using local state:", error);
+                window.isCloudOnline = false;
+                updateSyncBadge('Saved Locally (Offline)', 'amber');
+                window.updateDashboard();
             });
         }
 
@@ -486,22 +514,57 @@
             }
         }
 
-        // Save entry to Firestore
+        // Save entry with Local + Cloud Dual Persistence
         window.saveEntryToCloud = async function(entry, targetUser) {
-            if (!currentUser) throw new Error("Not authenticated");
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'checkins', entry.id);
-            await setDoc(docRef, {
-                ...entry,
-                user: targetUser,
-                updatedAt: new Date().toISOString()
-            });
+            // 1. Immediately update Local Storage so UI never fails or blocks
+            if (!window.trackerData[targetUser]) window.trackerData[targetUser] = [];
+            const idx = window.trackerData[targetUser].findIndex(item => item.id === entry.id);
+            if (idx >= 0) {
+                window.trackerData[targetUser][idx] = entry;
+            } else {
+                window.trackerData[targetUser].push(entry);
+            }
+            saveLocalData(window.trackerData);
+            window.updateDashboard();
+
+            // 2. Attempt Background Cloud Write
+            if (currentUser && window.isCloudOnline !== false) {
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'checkins', entry.id);
+                    await setDoc(docRef, {
+                        ...entry,
+                        user: targetUser,
+                        updatedAt: new Date().toISOString()
+                    });
+                } catch (e) {
+                    console.warn("Cloud write pending, saved locally:", e);
+                    updateSyncBadge('Saved Locally (Offline)', 'amber');
+                }
+            } else {
+                updateSyncBadge('Saved Locally (Offline)', 'amber');
+            }
         };
 
-        // Delete entry from Firestore
+        // Delete entry with Local + Cloud Dual Removal
         window.deleteEntryFromCloud = async function(id) {
-            if (!currentUser) throw new Error("Not authenticated");
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'checkins', id);
-            await deleteDoc(docRef);
+            // Local removal
+            ['Jack', 'Courtney'].forEach(u => {
+                if (window.trackerData[u]) {
+                    window.trackerData[u] = window.trackerData[u].filter(item => item.id !== id);
+                }
+            });
+            saveLocalData(window.trackerData);
+            window.updateDashboard();
+
+            // Cloud removal
+            if (currentUser && window.isCloudOnline !== false) {
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'checkins', id);
+                    await deleteDoc(docRef);
+                } catch (e) {
+                    console.warn("Cloud delete failed, removed locally:", e);
+                }
+            }
         };
 
         // Kick off Firebase sync
